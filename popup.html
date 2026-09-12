@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Content Blur Guard</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --danger: #ef4444;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 14px;
+      font-size: 13px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--primary), #818cf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .status-pill.offline {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Master Switch Card */
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .switch-label {
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .switch-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Toggle switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #475569;
+      transition: .2s;
+      border-radius: 22px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+
+    /* Stats Box */
+    .stat-single {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-single-title {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .stat-num {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--danger);
+    }
+
+    /* Sensitivity Slider */
+    .slider-container {
+      margin-top: 8px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    /* Quick Test Box */
+    .test-box {
+      margin-top: 6px;
+    }
+
+    .test-input-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .test-input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .test-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .test-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+
+    .test-btn:hover {
+      background: var(--primary-hover);
+    }
+
+    .test-result {
+      margin-top: 6px;
+      font-size: 11px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      display: none;
+    }
+
+    .test-result.toxic {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      display: block;
+    }
+
+    .test-result.clean {
+      background: rgba(16, 185, 129, 0.2);
+      color: #86efac;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      display: block;
+    }
+
+    /* Offline Banner */
+    .offline-tip {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px dashed rgba(239, 68, 68, 0.4);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #fca5a5;
+      line-height: 1.4;
+      display: none;
+      margin-bottom: 10px;
+    }
+
+    .offline-tip code {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-icon">🛡️</div>
+      <span class="brand-title">Text Blur Guard</span>
+    </div>
+    <div id="statusPill" class="status-pill">
+      <div class="status-dot"></div>
+      <span id="statusText">Checking...</span>
+    </div>
+  </div>
+
+  <!-- Offline Help Notice -->
+  <div id="offlineNotice" class="offline-tip">
+    ⚠️ <strong>API Offline</strong>: Start server via:<br/>
+    <code>uvicorn main:app --reload</code> in <code>api-server</code>
+  </div>
+
+  <!-- Master Protection Switch -->
+  <div class="card">
+    <div class="switch-row">
+      <div>
+        <div class="switch-label">Text Protection</div>
+        <div class="switch-desc">Blur vulgar, toxic & violent text</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggleEnabled" checked />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Page Stats -->
+  <div class="stat-single">
+    <div>
+      <div class="stat-single-title">Vulgar & Violent Texts Blurred</div>
+      <div class="switch-desc" style="margin-top:2px;">Current tab protection count</div>
+    </div>
+    <div id="statText" class="stat-num">0</div>
+  </div>
+
+  <!-- Sensitivity Configuration -->
+  <div class="card">
+    <div class="switch-label">Sensitivity Threshold</div>
+    <div class="slider-container">
+      <div class="slider-header">
+        <span>Strict (30%)</span>
+        <span id="thresholdVal" style="font-weight: 700; color: #818cf8;">50%</span>
+        <span>Lenient (80%)</span>
+      </div>
+      <input type="range" id="thresholdSlider" min="20" max="85" value="50" step="5" />
+    </div>
+  </div>
+
+  <!-- Quick Model Sandbox / Tester -->
+  <div class="card test-box">
+    <div class="switch-label">Test Model Live</div>
+    <div class="switch-desc">Verify text classification in real-time</div>
+    <div class="test-input-row">
+      <input type="text" id="testInput" class="test-input" placeholder="e.g. violent or vulgar phrase..." />
+      <button id="testBtn" class="test-btn">Test</button>
+    </div>
+    <div id="testResult" class="test-result"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
