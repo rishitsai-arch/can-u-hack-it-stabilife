@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Main App | Stabilife</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="app-body">
+  <div class="page-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark app">X</div>
+        <span>Stabilife</span>
+      </div>
+
+      <nav class="nav">
+        <a class="nav-item active" href="#"><span class="nav-icon">⌂</span>Home</a>
+        <a class="nav-item" href="#"><span class="nav-icon">#</span>Explore</a>
+        <a class="nav-item" href="#"><span class="nav-icon">🔔</span>Notifications</a>
+        <a class="nav-item" href="#"><span class="nav-icon">✉</span>Messages</a>
+        <a class="nav-item" href="#"><span class="nav-icon">👤</span>Profile</a>
+        <a class="nav-item" href="#"><span class="nav-icon">⋯</span>More</a>
+      </nav>
+
+      <button class="tweet-button">Post</button>
+
+      <div class="profile-mini">
+        <div class="avatar small">AK</div>
+        <div class="profile-meta">
+          <strong>Ajay Kumar</strong>
+          <span>@ajayk</span>
+        </div>
+        <div>•••</div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <h1>Home</h1>
+        <div class="mini-icon">✦</div>
+      </header>
+
+      <section class="composer">
+        <div class="composer-row">
+          <div class="avatar small">AK</div>
+          <textarea placeholder="What's happening?"></textarea>
+        </div>
+        <div class="composer-controls">
+          <div class="toolset">
+            <span>◧</span>
+            <span>◎</span>
+            <span>◫</span>
+            <span>☰</span>
+          </div>
+          <button class="post-btn">Tweet</button>
+        </div>
+      </section>
+
+      <section class="feed">
+        <article class="tweet">
+          <div class="avatar small">JD</div>
+          <div>
+            <div class="tweet-head">
+              <div class="user-line">
+                <span class="user-name">John Doe</span>
+                <span class="handle">@johndoe</span>
+                <span class="time">· 2h</span>
+              </div>
+              <div>•••</div>
+            </div>
+            <p class="tweet-text">
+              Building something amazing with a clean UI and a strong product story. Frontend-only mockups are a great way to validate ideas fast.
+            </p>
+            <div class="tweet-media"></div>
+            <div class="tweet-actions">
+              <div class="action-item"><span class="action-icon">💬</span>24</div>
+              <div class="action-item retweet"><span class="action-icon">↻</span>12</div>
+              <div class="action-item like"><span class="action-icon">♥</span>89</div>
+              <div class="action-item"><span class="action-icon">↗</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="tweet">
+          <div class="avatar small">MS</div>
+          <div>
+            <div class="tweet-head">
+              <div class="user-line">
+                <span class="user-name">Mila Smith</span>
+                <span class="handle">@mila</span>
+                <span class="time">· 4h</span>
+              </div>
+              <div>•••</div>
+            </div>
+            <p class="tweet-text">
+              A simple timeline with thoughtful spacing, good hierarchy, and mobile-friendly behavior can make a big difference in user experience.
+            </p>
+            <div class="tweet-actions">
+              <div class="action-item"><span class="action-icon">💬</span>8</div>
+              <div class="action-item retweet"><span class="action-icon">↻</span>5</div>
+              <div class="action-item like"><span class="action-icon">♥</span>34</div>
+              <div class="action-item"><span class="action-icon">↗</span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="tweet">
+          <div class="avatar small">PK</div>
+          <div>
+            <div class="tweet-head">
+              <div class="user-line">
+                <span class="user-name">Priya Kumar</span>
+                <span class="handle">@priya</span>
+                <span class="time">· 8h</span>
+              </div>
+              <div>•••</div>
+            </div>
+            <p class="tweet-text">
+              Love seeing product ideas turn into prototypes quickly. The best part is that the interface feels real even before the backend is connected.
+            </p>
+            <div class="tweet-actions">
+              <div class="action-item"><span class="action-icon">💬</span>19</div>
+              <div class="action-item retweet"><span class="action-icon">↻</span>15</div>
+              <div class="action-item like"><span class="action-icon">♥</span>67</div>
+              <div class="action-item"><span class="action-icon">↗</span></div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <aside class="rightbar">
+      <div class="search">
+        <div class="search-box">
+          <span>⌕</span>
+          <input type="text" placeholder="Search" />
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Trending</h3>
+        <div class="trend-item">
+          <div class="trend-label">Trending in Technology</div>
+          <div class="trend-name">#Frontend</div>
+          <div class="trend-count">18.2K posts</div>
+        </div>
+        <div class="trend-item">
+          <div class="trend-label">Trending in Design</div>
+          <div class="trend-name">#UIUX</div>
+          <div class="trend-count">9.4K posts</div>
+        </div>
+        <div class="trend-item">
+          <div class="trend-label">Trending in Startup</div>
+          <div class="trend-name">#Product</div>
+          <div class="trend-count">23.7K posts</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Who to follow</h3>
+        <div class="follow-list">
+          <div class="follow-item">
+            <div class="avatar small">AR</div>
+            <div class="profile-meta">
+              <strong>Ariana Reed</strong>
+              <span>@ariana</span>
+            </div>
+            <button class="follow-btn">Follow</button>
+          </div>
+          <div class="follow-item">
+            <div class="avatar small">LT</div>
+            <div class="profile-meta">
+              <strong>Leo Tate</strong>
+              <span>@leo</span>
+            </div>
+            <button class="follow-btn">Follow</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>
