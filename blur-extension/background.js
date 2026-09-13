@@ -8,11 +8,12 @@ const tabStats = new Map();
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "updateStats" && sender.tab) {
     const tabId = sender.tab.id;
-    const current = tabStats.get(tabId) || { textBlurred: 0 };
+    const current = tabStats.get(tabId) || { textBlurred: 0, imagesBlurred: 0 };
     current.textBlurred += message.textBlurred || 0;
+    current.imagesBlurred += message.imagesBlurred || 0;
     tabStats.set(tabId, current);
 
-    const total = current.textBlurred;
+    const total = current.textBlurred + current.imagesBlurred;
     if (total > 0) {
       chrome.action.setBadgeText({ tabId, text: String(total) });
       chrome.action.setBadgeBackgroundColor({ tabId, color: "#EF4444" });
@@ -25,7 +26,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === "getTabStats") {
     const tabId = message.tabId;
-    const stats = tabStats.get(tabId) || { textBlurred: 0 };
+    const stats = tabStats.get(tabId) || { textBlurred: 0, imagesBlurred: 0 };
     sendResponse(stats);
     return true;
   }
@@ -44,6 +45,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texts: message.texts, threshold: message.threshold }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async response
+  }
+
+  // Handle image prediction in background to bypass CORS and Mixed-Content
+  if (message.action === "predictImageUrl") {
+    fetch(`${API_BASE}/predict-image-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: message.url }),
     })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

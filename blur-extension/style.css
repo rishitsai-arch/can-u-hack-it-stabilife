@@ -32,7 +32,9 @@
 
 /* Tooltip Badge on Hover */
 .cbg-blurred-text[data-cbg-info]:hover::after,
-.cbg-revealed[data-cbg-info]:hover::after {
+.cbg-revealed[data-cbg-info]:hover::after,
+.cbg-blurred-image[data-cbg-info]:hover::after,
+.cbg-image-revealed[data-cbg-info]:hover::after {
   content: attr(data-cbg-info);
   position: absolute;
   bottom: 100%;
@@ -52,3 +54,26 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* Blurred Images (Violence & NSFW) */
+.cbg-blurred-image {
+  filter: blur(28px) brightness(0.7) !important;
+  transition: filter 0.3s ease, opacity 0.3s ease !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  border: 2px solid rgba(239, 68, 68, 0.4) !important;
+  border-radius: 8px !important;
+}
+
+.cbg-blurred-image:hover {
+  filter: blur(8px) brightness(0.9) !important;
+}
+
+.cbg-image-revealed {
+  filter: none !important;
+  outline: 2px dashed rgba(239, 68, 68, 0.6) !important;
+  outline-offset: 3px !important;
+  cursor: pointer !important;
+  transition: outline 0.2s ease !important;
+}
+

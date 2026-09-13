@@ -60,13 +60,16 @@
 
   // Stats for this page
   let textBlurredCount = 0;
+  let imagesBlurredCount = 0;
 
-  function reportStats(newText = 0) {
+  function reportStats(newText = 0, newImages = 0) {
     textBlurredCount += newText;
+    imagesBlurredCount += newImages;
     if (chrome.runtime && chrome.runtime.sendMessage) {
       chrome.runtime.sendMessage({
         action: "updateStats",
         textBlurred: newText,
+        imagesBlurred: newImages,
       }).catch(() => {});
     }
   }
@@ -285,15 +288,108 @@
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Universal Image Moderation Engine
+  // -------------------------------------------------------------------------
+  const processedImages = new WeakSet();
+
+  const imageIntersectionObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const img = entry.target;
+        checkAndModerateImage(img);
+        imageIntersectionObserver.unobserve(img);
+      }
+    },
+    { rootMargin: "350px" }
+  );
+
+  function observeImage(img) {
+    if (!settings.enabled || !img || processedImages.has(img)) return;
+
+    const src = img.currentSrc || img.src;
+    if (!src || src.length < 5) return;
+
+    // Skip tracking pixels or tiny icons
+    if (img.complete && (img.naturalWidth < 40 || img.naturalHeight < 40)) {
+      return;
+    }
+
+    imageIntersectionObserver.observe(img);
+  }
+
+  function scanImages(root = document.body) {
+    if (!settings.enabled || !root) return;
+    if (root instanceof HTMLImageElement) {
+      observeImage(root);
+      return;
+    }
+    if (root.querySelectorAll) {
+      root.querySelectorAll("img").forEach(observeImage);
+    }
+  }
+
+  async function checkAndModerateImage(img) {
+    if (!settings.enabled || processedImages.has(img)) return;
+    processedImages.add(img);
+
+    const src = img.currentSrc || img.src;
+    if (!src) return;
+
+    // Send through background worker to bypass CORS and Mixed-Content
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      try {
+        chrome.runtime.sendMessage({ action: "predictImageUrl", url: src }, (res) => {
+          if (chrome.runtime.lastError || !res || !res.ok) return;
+          const data = res.data;
+          if (data && (data.is_flagged || data.is_violence || data.is_nsfw)) {
+            const cat = data.category || data.label || "sensitive";
+            blurImageElement(img, cat, data.confidence);
+            reportStats(0, 1);
+          }
+        });
+      } catch (e) {
+        // Extension context invalidated
+      }
+    }
+  }
+
+  function blurImageElement(img, category, confidence) {
+    if (!img || img.classList.contains("cbg-blurred-image")) return;
+
+    img.classList.add("cbg-blurred-image");
+    img.setAttribute(
+      "data-cbg-info",
+      `Shielded: ${category.toUpperCase()} Image (${confidence}% confidence) - Click to toggle`
+    );
+
+    img.addEventListener("click", function handleImageClick(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (img.classList.contains("cbg-blurred-image")) {
+        img.classList.remove("cbg-blurred-image");
+        img.classList.add("cbg-image-revealed");
+      } else if (img.classList.contains("cbg-image-revealed")) {
+        img.classList.remove("cbg-image-revealed");
+        img.classList.add("cbg-blurred-image");
+      }
+    });
+  }
+
   function scanPage() {
     if (!document.body) return;
     const elements = findTextLeafElements(document.body);
     processCandidates(elements);
+    scanImages(document.body);
   }
 
   function unblurAll() {
     document.querySelectorAll(".cbg-blurred-text").forEach((el) => {
       el.classList.remove("cbg-blurred-text");
+    });
+    document.querySelectorAll(".cbg-blurred-image").forEach((el) => {
+      el.classList.remove("cbg-blurred-image");
     });
   }
 
@@ -317,6 +413,7 @@
       if (node.isConnected) {
         const elements = findTextLeafElements(node);
         processCandidates(elements);
+        scanImages(node);
       }
     }
   }

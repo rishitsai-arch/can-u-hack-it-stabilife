@@ -450,23 +450,63 @@ async def predict_image(file: UploadFile = File(...)):
 async def predict_image_url(payload: ImageUrlPayload):
     """
     Downloads image on the backend to bypass browser CORS restrictions,
-    then evaluates it with the image model.
+    then evaluates it with the image model (supports http, https, file://, data URIs, and local paths).
     """
+    url = payload.url.strip()
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            resp = await client.get(payload.url, headers=headers)
-            resp.raise_for_status()
-            img = Image.open(io.BytesIO(resp.content))
+        if url.startswith("data:image"):
+            import base64
+            _, data = url.split(",", 1)
+            img_bytes = base64.b64decode(data)
+            img = Image.open(io.BytesIO(img_bytes))
+        elif url.startswith("file://"):
+            from urllib.parse import unquote, urlparse
+            file_path = unquote(urlparse(url).path)
+            img = Image.open(file_path)
+        elif not url.startswith("http://") and not url.startswith("https://"):
+            # Local filename or relative path
+            local_name = url.split("?")[0].lstrip("./")
+            local_path = find_file(local_name)
+            if local_path and local_path.exists():
+                img = Image.open(local_path)
+            else:
+                raise FileNotFoundError(f"Local image not found: {url}")
+        else:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                img = Image.open(io.BytesIO(resp.content))
     except Exception as e:
         return {
-            "error": f"Failed to download image from URL: {e}",
+            "error": f"Failed to load image from URL: {e}",
             "label": "unknown",
+            "category": "unknown",
             "confidence": 0.0,
             "is_violence": False,
+            "is_nsfw": False,
+            "is_flagged": False,
         }
 
     return _classify_image_pil(img)
+
+
+@app.get("/fight1.jpeg")
+async def get_fight1():
+    p = find_file("fight1.jpeg")
+    return StreamingResponse(open(p, "rb"), media_type="image/jpeg")
+
+
+@app.get("/fight2.jpeg")
+async def get_fight2():
+    p = find_file("fight2.jpeg")
+    return StreamingResponse(open(p, "rb"), media_type="image/jpeg")
+
+
+@app.get("/nofight.jpeg")
+async def get_nofight():
+    p = find_file("nofight.jpeg")
+    return StreamingResponse(open(p, "rb"), media_type="image/jpeg")
 
 
 @app.post("/predict-image-and-blur")
