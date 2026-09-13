@@ -1,5 +1,5 @@
-// Content Blur Guard - Content Script
-// Scans webpages for vulgar, abusive, toxic, and violent TEXT and blurs it.
+// Content Blur Guard - Universal Content Script
+// Automatically detects and blurs vulgar, abusive, toxic, and violent text across ALL websites and HTML elements.
 
 (function () {
   "use strict";
@@ -36,6 +36,21 @@
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Universal DOM Text Engine (TreeWalker)
+  // -------------------------------------------------------------------------
+  // Tags that must never be scanned or blurred
+  const IGNORED_TAGS = new Set([
+    "SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "INPUT", "CODE",
+    "PRE", "SVG", "CANVAS", "VIDEO", "AUDIO", "IFRAME", "SELECT",
+    "OPTION", "HEAD", "TITLE", "META", "LINK"
+  ]);
+
+  // Inline styling tags that can be part of a sentence
+  const INLINE_TAGS = new Set([
+    "B", "STRONG", "I", "EM", "A", "SPAN", "MARK", "U", "SMALL", "SUB", "SUP", "FONT"
+  ]);
+
   // Tracking processed text elements
   const processedElements = new WeakSet();
 
@@ -56,50 +71,107 @@
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Text Processing & Batching
-  // -------------------------------------------------------------------------
-  function queueTextElement(el) {
-    if (!settings.enabled) return;
-    if (processedElements.has(el)) return;
-
-    // Check if element contains direct readable text
-    const directText = getDirectText(el);
-    if (!directText || directText.length < 8) return;
-
-    processedElements.add(el);
-    pendingTextQueue.push({ element: el, text: directText });
-
-    if (!batchTimer) {
-      batchTimer = setTimeout(flushTextBatch, 150);
+  /**
+   * Finds universal leaf text elements under a root node.
+   * Works on any website regardless of HTML tag (custom components, divs, p, td, li, etc.).
+   */
+  function findTextLeafElements(root = document.body) {
+    if (!root || !(root instanceof Node)) return [];
+    
+    // If root itself is an ignored tag, skip
+    if (root.nodeType === Node.ELEMENT_NODE && IGNORED_TAGS.has(root.tagName)) {
+      return [];
     }
+
+    const candidateElements = new Set();
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          if (IGNORED_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
+          if (parent.classList.contains("cbg-blurred-text") || parent.classList.contains("cbg-revealed")) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (processedElements.has(parent)) return NodeFilter.FILTER_REJECT;
+
+          const text = node.textContent.trim();
+          if (text.length < 6) return NodeFilter.FILTER_REJECT;
+
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode;
+      let target = textNode.parentElement;
+
+      // Climb up inline tags (e.g. <b>, <i>, <a>) to the nearest coherent sentence/block container
+      while (
+        target &&
+        target.parentElement &&
+        INLINE_TAGS.has(target.tagName) &&
+        !IGNORED_TAGS.has(target.parentElement.tagName) &&
+        target.parentElement.childElementCount <= 5
+      ) {
+        target = target.parentElement;
+      }
+
+      if (target && !processedElements.has(target) && !candidateElements.has(target)) {
+        candidateElements.add(target);
+      }
+    }
+
+    return Array.from(candidateElements);
   }
 
-  function getDirectText(el) {
-    if (el.childElementCount === 0) {
-      return el.innerText ? el.innerText.trim() : (el.textContent ? el.textContent.trim() : "");
+  function getCleanElementText(el) {
+    if (!el) return "";
+    // If element has few children, innerText gives the exact rendered sentence
+    if (el.childElementCount <= 4) {
+      const text = el.innerText || el.textContent || "";
+      return text.trim();
     }
-    // If element has few children, innerText is fine
-    if (el.childElementCount <= 2) {
-      return el.innerText ? el.innerText.trim() : "";
-    }
-    // Otherwise only take immediate text nodes
+    // Otherwise extract immediate text
     let text = "";
     for (const node of el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) {
         text += node.textContent;
+      } else if (node.nodeType === Node.ELEMENT_NODE && INLINE_TAGS.has(node.tagName)) {
+        text += " " + (node.innerText || node.textContent || "");
       }
     }
     return text.trim();
   }
 
+  function queueTextElement(el) {
+    if (!settings.enabled || !el) return;
+    if (processedElements.has(el)) return;
+
+    const directText = getCleanElementText(el);
+    if (!directText || directText.length < 6) return;
+
+    processedElements.add(el);
+    pendingTextQueue.push({ element: el, text: directText });
+
+    if (!batchTimer) {
+      batchTimer = setTimeout(flushTextBatch, 120);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Batch Execution
+  // -------------------------------------------------------------------------
   async function flushTextBatch() {
     batchTimer = null;
     if (!settings.enabled || pendingTextQueue.length === 0) {
       return;
     }
 
-    const currentBatch = pendingTextQueue.splice(0, 30); // Max 30 at a time
+    const currentBatch = pendingTextQueue.splice(0, 30); // Max 30 per batch
     const texts = currentBatch.map((item) => item.text);
 
     function applyResults(results) {
@@ -119,7 +191,7 @@
       }
     }
 
-    // Try via background service worker first (bypasses Mixed Content blocks on HTTPS)
+    // 1. Try background worker first (bypasses HTTPS Mixed-Content restrictions)
     let processed = false;
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
       try {
@@ -144,7 +216,7 @@
       }
     }
 
-    // Fallback to direct fetch if background worker is unavailable
+    // 2. Direct fetch fallback
     if (!processed) {
       try {
         const response = await fetch(TEXT_BATCH_ENDPOINT, {
@@ -161,14 +233,14 @@
       }
     }
 
-    // If more left in queue, process next batch
+    // Continue processing remaining items in queue
     if (pendingTextQueue.length > 0) {
-      batchTimer = setTimeout(flushTextBatch, 100);
+      batchTimer = setTimeout(flushTextBatch, 80);
     }
   }
 
   function blurTextElement(el, confidence, score) {
-    if (el.classList.contains("cbg-blurred-text")) return;
+    if (!el || el.classList.contains("cbg-blurred-text")) return;
 
     el.classList.add("cbg-blurred-text");
     el.setAttribute(
@@ -177,8 +249,11 @@
     );
 
     // Click to toggle reveal
-    el.addEventListener("click", function handleToggle() {
+    el.addEventListener("click", function handleToggle(e) {
+      // If clicking inside a link or button, prevent default navigation when revealing
       if (el.classList.contains("cbg-blurred-text")) {
+        e.preventDefault();
+        e.stopPropagation();
         el.classList.remove("cbg-blurred-text");
         el.classList.add("cbg-revealed");
       } else if (el.classList.contains("cbg-revealed")) {
@@ -189,10 +264,9 @@
   }
 
   // -------------------------------------------------------------------------
-  // Page Scanning & Observers (Text Only)
+  // Page Scanning & Dynamic Observers
   // -------------------------------------------------------------------------
-  const textSelector = "p, span, h1, h2, h3, h4, h5, h6, li, blockquote, article, .comment, [role='article']";
-
+  // Pre-scan elements lazily when they approach the viewport
   const intersectionObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
@@ -202,23 +276,19 @@
         intersectionObserver.unobserve(el);
       }
     },
-    { rootMargin: "350px" } // Pre-scan slightly before scrolling into view
+    { rootMargin: "450px" } // Pre-scan slightly before scrolling into view
   );
 
-  function observeNewNode(node) {
-    if (!(node instanceof HTMLElement)) return;
-
-    if (node.matches && node.matches(textSelector)) {
-      intersectionObserver.observe(node);
-    }
-
-    if (node.querySelectorAll) {
-      node.querySelectorAll(textSelector).forEach((el) => intersectionObserver.observe(el));
+  function processCandidates(elements) {
+    for (const el of elements) {
+      intersectionObserver.observe(el);
     }
   }
 
   function scanPage() {
-    document.querySelectorAll(textSelector).forEach((el) => intersectionObserver.observe(el));
+    if (!document.body) return;
+    const elements = findTextLeafElements(document.body);
+    processCandidates(elements);
   }
 
   function unblurAll() {
@@ -234,13 +304,35 @@
     scanPage();
   }
 
-  // MutationObserver for dynamically added text (Twitter, Reddit, YouTube comments)
+  // MutationObserver for dynamic SPAs (Twitter/X, Reddit, YouTube comments, Discord, etc.)
+  let mutationTimeout = null;
+  const mutationNodes = new Set();
+
+  function flushMutations() {
+    mutationTimeout = null;
+    const toProcess = Array.from(mutationNodes);
+    mutationNodes.clear();
+
+    for (const node of toProcess) {
+      if (node.isConnected) {
+        const elements = findTextLeafElements(node);
+        processCandidates(elements);
+      }
+    }
+  }
+
   const mutationObserver = new MutationObserver((mutations) => {
     if (!settings.enabled) return;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
-        observeNewNode(node);
+        if (node.nodeType === Node.ELEMENT_NODE && !IGNORED_TAGS.has(node.tagName)) {
+          mutationNodes.add(node);
+        }
       }
+    }
+
+    if (!mutationTimeout && mutationNodes.size > 0) {
+      mutationTimeout = setTimeout(flushMutations, 100);
     }
   });
 
