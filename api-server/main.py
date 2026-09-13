@@ -50,6 +50,12 @@ from pydantic import BaseModel, Field
 from torchvision import transforms
 from torchvision.models import efficientnet_b0
 
+try:
+    from transformers import AutoImageProcessor, AutoModelForImageClassification
+    HAS_TRANSFORMERS = True
+except ImportError:
+    HAS_TRANSFORMERS = False
+
 
 # ===========================================================================
 # STEP 2: Safe Path Resolution
@@ -112,8 +118,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMAGE_CLASSES = ["violence", "non_violence"]
 image_model = None
 image_model_load_error = None
+nsfw_model = None
+nsfw_processor = None
+nsfw_model_load_error = None
 
-# Attempt to locate and load the PyTorch EfficientNet-B0 model weights
+# 1. Attempt to locate and load the PyTorch EfficientNet-B0 violence model weights
 image_model_path = find_file("violence_model.pth")
 if image_model_path:
     try:
@@ -130,13 +139,25 @@ if image_model_path:
         m.to(device)
         m.eval()  # Set model to evaluation (inference) mode
         image_model = m
-        print(f"Image model loaded successfully from {image_model_path}")
+        print(f"Violence model loaded successfully from {image_model_path}")
     except Exception as e:
-        image_model_load_error = f"Failed to load image model: {e}"
+        image_model_load_error = f"Failed to load violence model: {e}"
         print(f"WARNING: {image_model_load_error}")
 else:
     image_model_load_error = "violence_model.pth not found"
     print(f"WARNING: {image_model_load_error}")
+
+# 2. Attempt to load the pre-trained Vision Transformer NSFW model (Falconsai)
+if HAS_TRANSFORMERS:
+    try:
+        nsfw_processor = AutoImageProcessor.from_pretrained("Falconsai/nsfw_image_detection")
+        nsfw_model = AutoModelForImageClassification.from_pretrained("Falconsai/nsfw_image_detection")
+        nsfw_model.to(device)
+        nsfw_model.eval()
+        print("NSFW model loaded successfully (Falconsai/nsfw_image_detection)")
+    except Exception as e:
+        nsfw_model_load_error = f"Failed to load NSFW model: {e}"
+        print(f"WARNING: {nsfw_model_load_error}")
 
 # Standard ImageNet pre-processing pipeline for incoming image inputs
 image_transform = transforms.Compose([
@@ -351,31 +372,64 @@ async def predict_text_batch(payload: BatchTextPayload):
 # ===========================================================================
 # STEP 12: Image Moderation Endpoints (Auxiliary)
 # ===========================================================================
-def _classify_image_pil(img: Image.Image, min_logit_diff: float = 6.0):
-    """Classifies PIL image into violence vs non-violence using EfficientNet-B0."""
-    if image_model is None:
-        return {"label": "unknown", "confidence": 0.0, "error": image_model_load_error, "is_violence": False}
-
+def _classify_image_pil(img: Image.Image, min_logit_diff: float = 6.0, threshold: float = 0.5):
+    """Classifies PIL image for both Violence and NSFW (Adult) content."""
     img_rgb = img.convert("RGB")
-    img_tensor = image_transform(img_rgb).unsqueeze(0).to(device)
+    
+    is_violence = False
+    violence_score = 0.0
+    violence_diff = 0.0
+    
+    # 1. Evaluate Violence using trained EfficientNet-B0
+    if image_model is not None:
+        img_tensor = image_transform(img_rgb).unsqueeze(0).to(device)
+        with torch.no_grad():
+            output = image_model(img_tensor)
+            probs = torch.softmax(output, dim=1)
+            violence_diff = output[0][0].item() - output[0][1].item()
+            is_violence = bool(violence_diff >= min_logit_diff)
+            violence_score = float(probs[0][0].item())
 
-    with torch.no_grad():
-        output = image_model(img_tensor)
-        probs = torch.softmax(output, dim=1)
-        
-        # In our trained image model, class 0 is fight/violence, class 1 is non-violence.
-        # min_logit_diff ensures only clear violent fight images are flagged.
-        diff = output[0][0].item() - output[0][1].item()
-        is_violence = bool(diff >= min_logit_diff)
-        confidence = probs[0][0].item() if is_violence else (1.0 - probs[0][0].item())
+    # 2. Evaluate Adult Content / NSFW using pre-trained Vision Transformer
+    is_nsfw = False
+    nsfw_score = 0.0
+    if nsfw_model is not None and nsfw_processor is not None:
+        try:
+            inputs = nsfw_processor(images=img_rgb, return_tensors="pt").to(device)
+            with torch.no_grad():
+                logits = nsfw_model(**inputs).logits
+                probs = torch.softmax(logits, dim=1)[0]
+                nsfw_idx = next((k for k, v in nsfw_model.config.id2label.items() if v.lower() == "nsfw"), 1)
+                nsfw_score = float(probs[nsfw_idx].item())
+                is_nsfw = bool(nsfw_score >= threshold)
+        except Exception as e:
+            print("NSFW evaluation warning:", e)
 
-    label = "violence" if is_violence else "non_violence"
+    # 3. Combined Moderation Decision
+    is_flagged = is_violence or is_nsfw
+    if is_violence and is_nsfw:
+        label = "violence" if violence_score >= nsfw_score else "nsfw"
+        confidence = round(max(violence_score, nsfw_score) * 100, 2)
+    elif is_violence:
+        label = "violence"
+        confidence = round(violence_score * 100, 2)
+    elif is_nsfw:
+        label = "nsfw"
+        confidence = round(nsfw_score * 100, 2)
+    else:
+        label = "non_violence"
+        confidence = round((1.0 - max(violence_score, nsfw_score)) * 100, 2)
+
     return {
+        "is_flagged": is_flagged,
         "label": label,
-        "confidence": round(confidence * 100, 2),
+        "category": label,
+        "confidence": confidence,
         "is_violence": is_violence,
-        "violence_score": round(probs[0][0].item(), 4),
-        "margin": round(diff, 2),
+        "is_nsfw": is_nsfw,
+        "violence_score": round(violence_score, 4),
+        "nsfw_score": round(nsfw_score, 4),
+        "margin": round(violence_diff, 2),
     }
 
 
