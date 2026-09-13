@@ -113,41 +113,31 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ===========================================================================
 # STEP 5: Loading the Trained Image Model (violence_model.pth)
 # ===========================================================================
-# Class labels: In our model, class 0 represents fight/violence,
-# and class 1 represents non-violence.
-IMAGE_CLASSES = ["violence", "non_violence"]
+# STEP 5: Loading the Image Models (Violence & NSFW)
+# ===========================================================================
+IMAGE_CLASSES = ["non_violence", "violence"]
 image_model = None
 image_model_load_error = None
+vit_violence_model = None
+vit_violence_processor = None
+vit_violence_load_error = None
 nsfw_model = None
 nsfw_processor = None
 nsfw_model_load_error = None
 
-# 1. Attempt to locate and load the PyTorch EfficientNet-B0 violence model weights
-image_model_path = find_file("violence_model.pth")
-if image_model_path:
+# 1. Load Pretrained Vision Transformer for Violence Detection (locih/violence_classification)
+if HAS_TRANSFORMERS:
     try:
-        # Reconstruct the EfficientNet-B0 architecture
-        m = efficientnet_b0(weights=None)
-        in_features = m.classifier[1].in_features
-        # Replace the final classification head for 2 classes (violence vs non-violence)
-        m.classifier = nn.Sequential(
-            nn.Dropout(p=0.2, inplace=True),
-            nn.Linear(in_features, 2),
-        )
-        # Load the trained weights saved in violence_model.pth
-        m.load_state_dict(torch.load(str(image_model_path), map_location=device))
-        m.to(device)
-        m.eval()  # Set model to evaluation (inference) mode
-        image_model = m
-        print(f"Violence model loaded successfully from {image_model_path}")
+        vit_violence_processor = AutoImageProcessor.from_pretrained("locih/violence_classification")
+        vit_violence_model = AutoModelForImageClassification.from_pretrained("locih/violence_classification")
+        vit_violence_model.to(device)
+        vit_violence_model.eval()
+        print("ViT Violence model loaded successfully (locih/violence_classification)")
     except Exception as e:
-        image_model_load_error = f"Failed to load violence model: {e}"
-        print(f"WARNING: {image_model_load_error}")
-else:
-    image_model_load_error = "violence_model.pth not found"
-    print(f"WARNING: {image_model_load_error}")
+        vit_violence_load_error = f"Failed to load ViT violence model: {e}"
+        print(f"WARNING: {vit_violence_load_error}")
 
-# 2. Attempt to load the pre-trained Vision Transformer NSFW model (Falconsai)
+# 2. Load Pretrained Vision Transformer for NSFW/Adult Detection (Falconsai/nsfw_image_detection)
 if HAS_TRANSFORMERS:
     try:
         nsfw_processor = AutoImageProcessor.from_pretrained("Falconsai/nsfw_image_detection")
@@ -159,7 +149,26 @@ if HAS_TRANSFORMERS:
         nsfw_model_load_error = f"Failed to load NSFW model: {e}"
         print(f"WARNING: {nsfw_model_load_error}")
 
-# Standard ImageNet pre-processing pipeline for incoming image inputs
+# 3. Load Trained EfficientNet-B0 Violence Model as auxiliary
+image_model_path = find_file("violence_model.pth")
+if image_model_path:
+    try:
+        m = efficientnet_b0(weights=None)
+        in_features = m.classifier[1].in_features
+        m.classifier = nn.Sequential(
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_features, 2),
+        )
+        m.load_state_dict(torch.load(str(image_model_path), map_location=device))
+        m.to(device)
+        m.eval()
+        image_model = m
+        print(f"EfficientNet violence model loaded successfully from {image_model_path}")
+    except Exception as e:
+        image_model_load_error = f"Failed to load EfficientNet: {e}"
+        print(f"WARNING: {image_model_load_error}")
+
+# Standard pre-processing transforms
 image_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -219,8 +228,12 @@ class BatchTextPayload(BaseModel):
     )
 
 class ImageUrlPayload(BaseModel):
-    """Payload for checking an image by external URL without CORS issues."""
+    """Payload for checking an image by external URL or base64 without CORS issues."""
     url: str
+    threshold: Optional[float] = Field(
+        default=0.5, ge=0.0, le=1.0, 
+        description="Sensitivity threshold (0.0 to 1.0)"
+    )
 
 
 # ===========================================================================
@@ -237,8 +250,9 @@ async def health():
         "status": "ok",
         "service": "Content Blur Guard Moderation API",
         "device": str(device),
-        "image_model": "loaded" if image_model is not None else "unavailable",
-        "image_model_error": image_model_load_error,
+        "image_model": "loaded" if (vit_violence_model is not None or image_model is not None) else "unavailable",
+        "violence_model": "loaded" if (vit_violence_model is not None or image_model is not None) else "unavailable",
+        "nsfw_model": "loaded" if nsfw_model is not None else "unavailable",
         "text_model": "loaded" if (vectorizer and text_model) else "unavailable",
         "text_model_error": text_model_load_error,
         "text_model_classes": [int(c) for c in text_model.classes_] if text_model and hasattr(text_model, "classes_") else None,
@@ -372,23 +386,40 @@ async def predict_text_batch(payload: BatchTextPayload):
 # ===========================================================================
 # STEP 12: Image Moderation Endpoints (Auxiliary)
 # ===========================================================================
-def _classify_image_pil(img: Image.Image, min_logit_diff: float = 6.0, threshold: float = 0.5):
-    """Classifies PIL image for both Violence and NSFW (Adult) content."""
+def _classify_image_pil(img: Image.Image, threshold: float = 0.5):
+    """
+    Classifies PIL image for both Violence and NSFW (Adult) content.
+    Uses ViT models (locih/violence_classification & Falconsai/nsfw_image_detection)
+    with optional fallback to EfficientNet-B0.
+    """
     img_rgb = img.convert("RGB")
     
     is_violence = False
     violence_score = 0.0
-    violence_diff = 0.0
     
-    # 1. Evaluate Violence using trained EfficientNet-B0
-    if image_model is not None:
-        img_tensor = image_transform(img_rgb).unsqueeze(0).to(device)
-        with torch.no_grad():
-            output = image_model(img_tensor)
-            probs = torch.softmax(output, dim=1)
-            violence_diff = output[0][0].item() - output[0][1].item()
-            is_violence = bool(violence_diff >= min_logit_diff)
-            violence_score = float(probs[0][0].item())
+    # 1. Evaluate Violence using ViT model
+    if vit_violence_model is not None and vit_violence_processor is not None:
+        try:
+            v_inputs = vit_violence_processor(images=img_rgb, return_tensors="pt").to(device)
+            with torch.no_grad():
+                v_logits = vit_violence_model(**v_inputs).logits
+                v_probs = torch.softmax(v_logits, dim=1)[0]
+                # Class 1 is unsafe/violence
+                violence_score = float(v_probs[1].item())
+                is_violence = bool(violence_score >= threshold)
+        except Exception as e:
+            print("ViT violence evaluation warning:", e)
+    elif image_model is not None:
+        try:
+            img_tensor = image_transform(img_rgb).unsqueeze(0).to(device)
+            with torch.no_grad():
+                output = image_model(img_tensor)
+                probs = torch.softmax(output, dim=1)
+                # Class 1 is violence
+                violence_score = float(probs[0][1].item())
+                is_violence = bool(violence_score >= threshold)
+        except Exception as e:
+            print("EfficientNet violence evaluation warning:", e)
 
     # 2. Evaluate Adult Content / NSFW using pre-trained Vision Transformer
     is_nsfw = False
@@ -429,20 +460,20 @@ def _classify_image_pil(img: Image.Image, min_logit_diff: float = 6.0, threshold
         "is_nsfw": is_nsfw,
         "violence_score": round(violence_score, 4),
         "nsfw_score": round(nsfw_score, 4),
-        "margin": round(violence_diff, 2),
+        "threshold": threshold,
     }
 
 
 @app.post("/predict-image")
-async def predict_image(file: UploadFile = File(...)):
-    """Accepts multipart/form-data image upload and returns violence prediction."""
+async def predict_image(file: UploadFile = File(...), threshold: float = 0.5):
+    """Accepts multipart/form-data image upload and returns violence/nsfw prediction."""
     contents = await file.read()
     try:
         img = Image.open(io.BytesIO(contents))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image format: {e}")
 
-    result = _classify_image_pil(img)
+    result = _classify_image_pil(img, threshold=threshold)
     return result
 
 
@@ -453,6 +484,7 @@ async def predict_image_url(payload: ImageUrlPayload):
     then evaluates it with the image model (supports http, https, file://, data URIs, and local paths).
     """
     url = payload.url.strip()
+    threshold = payload.threshold or 0.5
     try:
         if url.startswith("data:image"):
             import base64
@@ -472,14 +504,18 @@ async def predict_image_url(payload: ImageUrlPayload):
             else:
                 raise FileNotFoundError(f"Local image not found: {url}")
         else:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-                resp = await client.get(url, headers=headers)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
+                resp = await client.get(url)
                 resp.raise_for_status()
                 img = Image.open(io.BytesIO(resp.content))
     except Exception as e:
         return {
-            "error": f"Failed to load image from URL: {e}",
+            "error": f"Failed to load image: {e}",
             "label": "unknown",
             "category": "unknown",
             "confidence": 0.0,
@@ -488,7 +524,7 @@ async def predict_image_url(payload: ImageUrlPayload):
             "is_flagged": False,
         }
 
-    return _classify_image_pil(img)
+    return _classify_image_pil(img, threshold=threshold)
 
 
 @app.get("/fight1.jpeg")

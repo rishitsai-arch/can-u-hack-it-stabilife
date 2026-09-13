@@ -293,6 +293,33 @@
   // -------------------------------------------------------------------------
   const processedImages = new WeakSet();
 
+  function captureImageBase64(img) {
+    try {
+      if (!img.complete || img.naturalWidth < 10 || img.naturalHeight < 10) return null;
+      const canvas = document.createElement("canvas");
+      const maxDim = 256;
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      return canvas.toDataURL("image/jpeg", 0.8);
+    } catch (e) {
+      // Cross-origin tainted canvas, fallback to URL
+      return null;
+    }
+  }
+
   const imageIntersectionObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
@@ -308,13 +335,19 @@
   function observeImage(img) {
     if (!settings.enabled || !img || processedImages.has(img)) return;
 
-    const src = img.currentSrc || img.src;
-    if (!src || src.length < 5) return;
-
-    // Skip tracking pixels or tiny icons
-    if (img.complete && (img.naturalWidth < 40 || img.naturalHeight < 40)) {
+    // If image hasn't loaded yet, wait for load event
+    if (!img.complete || img.naturalWidth === 0) {
+      img.addEventListener("load", () => observeImage(img), { once: true });
       return;
     }
+
+    // Skip tracking pixels, tiny icons, or spacer GIFs
+    if (img.naturalWidth < 35 || img.naturalHeight < 35) {
+      return;
+    }
+
+    const src = img.currentSrc || img.src;
+    if (!src || src.length < 5) return;
 
     imageIntersectionObserver.observe(img);
   }
@@ -337,20 +370,56 @@
     const src = img.currentSrc || img.src;
     if (!src) return;
 
-    // Send through background worker to bypass CORS and Mixed-Content
+    const dataUrl = captureImageBase64(img);
+
+    function applyImageDecision(data) {
+      if (data && (data.is_flagged || data.is_violence || data.is_nsfw)) {
+        const cat = data.category || data.label || "sensitive";
+        blurImageElement(img, cat, data.confidence);
+        reportStats(0, 1);
+      }
+    }
+
+    // 1. Try background worker first (bypasses CORS and Mixed-Content)
+    let processed = false;
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
       try {
-        chrome.runtime.sendMessage({ action: "predictImageUrl", url: src }, (res) => {
-          if (chrome.runtime.lastError || !res || !res.ok) return;
-          const data = res.data;
-          if (data && (data.is_flagged || data.is_violence || data.is_nsfw)) {
-            const cat = data.category || data.label || "sensitive";
-            blurImageElement(img, cat, data.confidence);
-            reportStats(0, 1);
-          }
+        const bgRes = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            { action: "predictImageUrl", dataUrl, url: src, threshold: settings.threshold },
+            (response) => {
+              if (chrome.runtime.lastError || !response || !response.ok) {
+                resolve(null);
+              } else {
+                resolve(response.data);
+              }
+            }
+          );
         });
+        if (bgRes) {
+          applyImageDecision(bgRes);
+          processed = true;
+        }
       } catch (e) {
-        // Extension context invalidated
+        // Fallback
+      }
+    }
+
+    // 2. Direct fetch fallback if background didn't respond
+    if (!processed) {
+      try {
+        const payloadUrl = dataUrl || src;
+        const res = await fetch(`${API_BASE}/predict-image-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: payloadUrl, threshold: settings.threshold }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          applyImageDecision(data);
+        }
+      } catch (err) {
+        console.debug("Content Blur Guard: image check error", err.message);
       }
     }
   }
@@ -359,10 +428,9 @@
     if (!img || img.classList.contains("cbg-blurred-image")) return;
 
     img.classList.add("cbg-blurred-image");
-    img.setAttribute(
-      "data-cbg-info",
-      `Shielded: ${category.toUpperCase()} Image (${confidence}% confidence) - Click to toggle`
-    );
+    const labelText = `Shielded: ${category.toUpperCase()} Image (${confidence}% confidence) - Click to toggle`;
+    img.setAttribute("data-cbg-info", labelText);
+    img.setAttribute("title", labelText);
 
     img.addEventListener("click", function handleImageClick(e) {
       e.preventDefault();

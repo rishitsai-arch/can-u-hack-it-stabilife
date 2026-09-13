@@ -232,9 +232,9 @@
         </div>
       </article>
 
-      <!-- Post 4: Post with Image (Text only checked, image untouched) -->
+      <!-- Post 4: Post with Violent Fight Image (Expected Blurred) -->
       <article class="post-card">
-        <span class="tag-badge tag-image-note">Images Untouched (Text-Only Moderation)</span>
+        <span class="tag-badge tag-expected-flag">Expected: Flagged / Blurred (Violent Fight Image)</span>
         <div class="post-header">
           <div class="avatar" style="background:#ea580c">NW</div>
           <div class="user-info">
@@ -243,14 +243,36 @@
           </div>
         </div>
         <p class="post-text">
-          Daily sports update and local tournament highlights from the arena this morning.
+          Breaking news: Altercation reported downtown earlier today. The model automatically shields this violent imagery.
         </p>
         <div class="post-image-container">
-          <img src="./fight1.jpeg" alt="Action snapshot" />
+          <img src="/fight1.jpeg" alt="Violent street altercation" />
         </div>
         <div class="post-footer">
           <span>💬 82 comments</span>
           <span>❤️ 15 likes</span>
+        </div>
+      </article>
+
+      <!-- Post 5: Post with Safe / Non-Violent Image (Expected Unblurred) -->
+      <article class="post-card">
+        <span class="tag-badge tag-expected-clean">Expected: Clean / Unblurred (Safe Image)</span>
+        <div class="post-header">
+          <div class="avatar" style="background:#059669">PE</div>
+          <div class="user-info">
+            <div class="username">Peaceful Echoes</div>
+            <div class="handle">@peaceful_life • 1m ago</div>
+          </div>
+        </div>
+        <p class="post-text">
+          Enjoying a quiet afternoon in the park. Regular everyday scenes remain completely unblurred and clean.
+        </p>
+        <div class="post-image-container">
+          <img src="/nofight.jpeg" alt="Peaceful day scene" />
+        </div>
+        <div class="post-footer">
+          <span>💬 14 comments</span>
+          <span>❤️ 67 likes</span>
         </div>
       </article>
     </div>

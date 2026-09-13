@@ -71,13 +71,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     chrome.storage.local.set({ threshold });
   });
 
+  const statImages = document.getElementById("statImages");
+  const tabTextBtn = document.getElementById("tabTextBtn");
+  const tabImgBtn = document.getElementById("tabImgBtn");
+  const textTestPanel = document.getElementById("textTestPanel");
+  const imageTestPanel = document.getElementById("imageTestPanel");
+  const testImgInput = document.getElementById("testImgInput");
+  const testImgBtn = document.getElementById("testImgBtn");
+  const testImgResult = document.getElementById("testImgResult");
+
+  // Tab switching
+  if (tabTextBtn && tabImgBtn) {
+    tabTextBtn.addEventListener("click", () => {
+      tabTextBtn.style.background = "#4f46e5";
+      tabTextBtn.style.color = "#fff";
+      tabImgBtn.style.background = "#334155";
+      tabImgBtn.style.color = "#94a3b8";
+      textTestPanel.style.display = "block";
+      imageTestPanel.style.display = "none";
+    });
+
+    tabImgBtn.addEventListener("click", () => {
+      tabImgBtn.style.background = "#4f46e5";
+      tabImgBtn.style.color = "#fff";
+      tabTextBtn.style.background = "#334155";
+      tabTextBtn.style.color = "#94a3b8";
+      textTestPanel.style.display = "none";
+      imageTestPanel.style.display = "block";
+    });
+  }
+
   // 5. Query active tab stats
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       chrome.runtime.sendMessage({ action: "getTabStats", tabId: tab.id }, (res) => {
-        if (res && statText) {
-          statText.textContent = String(res.textBlurred || 0);
+        if (res) {
+          if (statText) statText.textContent = String(res.textBlurred || 0);
+          if (statImages) statImages.textContent = String(res.imagesBlurred || 0);
         }
       });
     }
@@ -85,7 +116,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Ignore tab query errors in standalone mode
   }
 
-  // 6. Quick Model Test Box
+  // 6. Quick Model Test Box - Text
   async function runQuickTest() {
     const text = testInput.value.trim();
     if (!text) return;
@@ -128,4 +159,54 @@ document.addEventListener("DOMContentLoaded", async () => {
   testInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") runQuickTest();
   });
+
+  // 7. Quick Model Test Box - Image
+  async function runQuickImageTest() {
+    const url = testImgInput.value.trim();
+    if (!url) return;
+
+    testImgBtn.disabled = true;
+    testImgBtn.textContent = "...";
+    testImgResult.style.display = "none";
+    testImgResult.className = "test-result";
+
+    try {
+      const threshold = parseFloat(thresholdSlider.value) / 100.0;
+      const res = await fetch(`${API_BASE}/predict-image-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, threshold }),
+      });
+
+      if (!res.ok) throw new Error("API returned status " + res.status);
+      const data = await res.json();
+
+      if (data.error && !data.is_flagged) {
+        testImgResult.className = "test-result toxic";
+        testImgResult.innerHTML = `⚠️ <strong>Image Error</strong>: ${data.error}`;
+      } else if (data.is_flagged) {
+        const cat = (data.category || data.label || "sensitive").toUpperCase();
+        testImgResult.className = "test-result toxic";
+        testImgResult.innerHTML = `🛡️ <strong>Flagged: ${cat} Image</strong><br/>Confidence: ${data.confidence}% (Violence: ${((data.violence_score||0)*100).toFixed(1)}%, NSFW: ${((data.nsfw_score||0)*100).toFixed(1)}%)`;
+      } else {
+        testImgResult.className = "test-result clean";
+        testImgResult.innerHTML = `✅ <strong>Clean / Safe Image</strong><br/>Safe confidence: ${data.confidence}% (Violence: ${((data.violence_score||0)*100).toFixed(1)}%, NSFW: ${((data.nsfw_score||0)*100).toFixed(1)}%)`;
+      }
+      testImgResult.style.display = "block";
+    } catch (err) {
+      testImgResult.className = "test-result toxic";
+      testImgResult.innerHTML = `⚠️ <strong>Error</strong>: ${err.message}. Is API running?`;
+      testImgResult.style.display = "block";
+    } finally {
+      testImgBtn.disabled = false;
+      testImgBtn.textContent = "Test";
+    }
+  }
+
+  if (testImgBtn) testImgBtn.addEventListener("click", runQuickImageTest);
+  if (testImgInput) {
+    testImgInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runQuickImageTest();
+    });
+  }
 });
