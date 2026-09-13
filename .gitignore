@@ -26,3 +26,8 @@ Thumbs.db
 *.zip
 *.tar.gz
 *.log
+
+# IDE & Editor settings
+.vscode/
+.idea/
+
