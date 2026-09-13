@@ -76,6 +76,9 @@
   }
 
   function getDirectText(el) {
+    if (el.childElementCount === 0) {
+      return el.innerText ? el.innerText.trim() : (el.textContent ? el.textContent.trim() : "");
+    }
     // If element has few children, innerText is fine
     if (el.childElementCount <= 2) {
       return el.innerText ? el.innerText.trim() : "";
@@ -99,20 +102,11 @@
     const currentBatch = pendingTextQueue.splice(0, 30); // Max 30 at a time
     const texts = currentBatch.map((item) => item.text);
 
-    try {
-      const response = await fetch(TEXT_BATCH_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texts, threshold: settings.threshold }),
-      });
-
-      if (!response.ok) return;
-
-      const data = await response.json();
+    function applyResults(results) {
+      if (!results || !Array.isArray(results)) return;
       let newlyBlurred = 0;
-
-      data.results.forEach((res, i) => {
-        if (res.is_flagged) {
+      results.forEach((res, i) => {
+        if (res && res.is_flagged) {
           const item = currentBatch[i];
           if (item && item.element && document.body.contains(item.element)) {
             blurTextElement(item.element, res.confidence, res.toxicity_score);
@@ -120,12 +114,51 @@
           }
         }
       });
-
       if (newlyBlurred > 0) {
         reportStats(newlyBlurred);
       }
-    } catch (err) {
-      console.debug("Content Blur Guard: text check error", err.message);
+    }
+
+    // Try via background service worker first (bypasses Mixed Content blocks on HTTPS)
+    let processed = false;
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      try {
+        const bgRes = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            { action: "predictTextBatch", texts, threshold: settings.threshold },
+            (response) => {
+              if (chrome.runtime.lastError || !response || !response.ok) {
+                resolve(null);
+              } else {
+                resolve(response.data);
+              }
+            }
+          );
+        });
+        if (bgRes && bgRes.results) {
+          applyResults(bgRes.results);
+          processed = true;
+        }
+      } catch (e) {
+        // Fallback to direct fetch
+      }
+    }
+
+    // Fallback to direct fetch if background worker is unavailable
+    if (!processed) {
+      try {
+        const response = await fetch(TEXT_BATCH_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ texts, threshold: settings.threshold }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          applyResults(data.results);
+        }
+      } catch (err) {
+        console.debug("Content Blur Guard: text check error", err.message);
+      }
     }
 
     // If more left in queue, process next batch
@@ -158,7 +191,7 @@
   // -------------------------------------------------------------------------
   // Page Scanning & Observers (Text Only)
   // -------------------------------------------------------------------------
-  const textSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, article, .comment, [role='article']";
+  const textSelector = "p, span, h1, h2, h3, h4, h5, h6, li, blockquote, article, .comment, [role='article']";
 
   const intersectionObserver = new IntersectionObserver(
     (entries) => {

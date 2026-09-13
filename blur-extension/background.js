@@ -37,6 +37,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((err) => sendResponse({ online: false, error: err.message }));
     return true; // async response
   }
+
+  // Handle batch text prediction in background to bypass HTTPS Mixed-Content block
+  if (message.action === "predictTextBatch") {
+    fetch(`${API_BASE}/predict-text-batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts: message.texts, threshold: message.threshold }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async response
+  }
 });
 
 // Clean up stats when tab closes

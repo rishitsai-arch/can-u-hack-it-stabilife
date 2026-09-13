@@ -44,7 +44,7 @@ import torch
 import torch.nn as nn
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from PIL import Image, ImageFilter
 from pydantic import BaseModel, Field
 from torchvision import transforms
@@ -458,6 +458,15 @@ async def predict_image_and_blur(file: UploadFile = File(...)):
             "Access-Control-Expose-Headers": "X-Label, X-Confidence",
         },
     )
+
+
+@app.get("/demo", response_class=HTMLResponse)
+async def serve_demo():
+    """Serves the test demo feed directly over HTTP to avoid file:/// browser permission blocks."""
+    demo_file = find_file("demo_page.html")
+    if demo_file and demo_file.exists():
+        return HTMLResponse(content=demo_file.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h3>demo_page.html not found</h3>", status_code=404)
 
 
 if __name__ == "__main__":
