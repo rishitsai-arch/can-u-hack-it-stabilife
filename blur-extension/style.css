@@ -1,0 +1,54 @@
+/* Content Blur Guard - Stylesheet (Text Only) */
+
+/* Blurred Text */
+.cbg-blurred-text {
+  filter: blur(8px) !important;
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  color: #64748b !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: filter 0.25s ease, background-color 0.25s ease !important;
+  position: relative !important;
+  display: inline-block !important;
+}
+
+.cbg-blurred-text:hover {
+  filter: blur(2px) !important;
+  background-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+/* Unblurred / Revealed state on click */
+.cbg-revealed {
+  filter: none !important;
+  background-color: transparent !important;
+  outline: 1.5px dashed rgba(239, 68, 68, 0.5) !important;
+  outline-offset: 2px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  user-select: auto !important;
+  transition: outline 0.2s ease !important;
+}
+
+/* Tooltip Badge on Hover */
+.cbg-blurred-text[data-cbg-info]:hover::after,
+.cbg-revealed[data-cbg-info]:hover::after {
+  content: attr(data-cbg-info);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  background: #1e293b;
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 5px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 999999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

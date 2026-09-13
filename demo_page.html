@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Content Blur Guard - Text Moderation Demo Feed</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --surface: #151d30;
+      --surface-border: #232f48;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 30px 20px;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(239, 68, 68, 0.15));
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .hero-title {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #818cf8, #f43f5e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .feed {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .post-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    }
+
+    .post-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      background: #334155;
+    }
+
+    .user-info .username {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .user-info .handle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .post-text {
+      font-size: 15px;
+      color: #e2e8f0;
+      margin-bottom: 12px;
+    }
+
+    .post-image-container {
+      margin-top: 10px;
+      border-radius: 8px;
+      overflow: hidden;
+      max-height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    .post-image-container img {
+      width: 100%;
+      height: auto;
+      max-height: 320px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .post-footer {
+      display: flex;
+      gap: 16px;
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid var(--surface-border);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .tag-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    .tag-expected-clean {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .tag-expected-flag {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .tag-image-note {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero-banner">
+      <h1 class="hero-title">Text Blur Guard Demo Feed</h1>
+      <p class="hero-desc">
+        Demonstration feed for AI text moderation.<br/>
+        All vulgar, abusive, and violent texts will automatically be blurred. Images are left untouched.
+      </p>
+    </div>
+
+    <div class="feed">
+      <!-- Post 1: Safe Text -->
+      <article class="post-card">
+        <span class="tag-badge tag-expected-clean">Expected: Clean (Unblurred)</span>
+        <div class="post-header">
+          <div class="avatar" style="background:#0284c7">AL</div>
+          <div class="user-info">
+            <div class="username">Alex Liang</div>
+            <div class="handle">@alex_liang • 10m ago</div>
+          </div>
+        </div>
+        <p class="post-text">
+          Just published a comprehensive tutorial on building performant web applications with Python FastAPI and scikit-learn. Hope everyone has a wonderful weekend exploring it!
+        </p>
+        <div class="post-footer">
+          <span>💬 12 comments</span>
+          <span>❤️ 45 likes</span>
+        </div>
+      </article>
+
+      <!-- Post 2: Vulgar / Toxic Text (Should Blur) -->
+      <article class="post-card">
+        <span class="tag-badge tag-expected-flag">Expected: Flagged / Blurred (Toxic/Vulgar)</span>
+        <div class="post-header">
+          <div class="avatar" style="background:#dc2626">TR</div>
+          <div class="user-info">
+            <div class="username">Troll992</div>
+            <div class="handle">@angry_user • 8m ago</div>
+          </div>
+        </div>
+        <p class="post-text">
+          You are such a stupid ugly idiot and a complete bitch. Get lost and delete your account right now!
+        </p>
+        <div class="post-footer">
+          <span>💬 4 comments</span>
+          <span>❤️ 1 like</span>
+        </div>
+      </article>
+
+      <!-- Post 3: Violent Threat Text (Should Blur) -->
+      <article class="post-card">
+        <span class="tag-badge tag-expected-flag">Expected: Flagged / Blurred (Violent Threat)</span>
+        <div class="post-header">
+          <div class="avatar" style="background:#b91c1c">VT</div>
+          <div class="user-info">
+            <div class="username">Violent Threat</div>
+            <div class="handle">@threat_account • 5m ago</div>
+          </div>
+        </div>
+        <p class="post-text">
+          I will track you down, kill you, and beat you up until you bleed to death.
+        </p>
+        <div class="post-footer">
+          <span>💬 19 comments</span>
+          <span>❤️ 0 likes</span>
+        </div>
+      </article>
+
+      <!-- Post 4: Post with Image (Text only checked, image untouched) -->
+      <article class="post-card">
+        <span class="tag-badge tag-image-note">Images Untouched (Text-Only Moderation)</span>
+        <div class="post-header">
+          <div class="avatar" style="background:#ea580c">NW</div>
+          <div class="user-info">
+            <div class="username">City Journal</div>
+            <div class="handle">@city_journal • 3m ago</div>
+          </div>
+        </div>
+        <p class="post-text">
+          Daily sports update and local tournament highlights from the arena this morning.
+        </p>
+        <div class="post-image-container">
+          <img src="./fight1.jpeg" alt="Action snapshot" />
+        </div>
+        <div class="post-footer">
+          <span>💬 82 comments</span>
+          <span>❤️ 15 likes</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</body>
+</html>
